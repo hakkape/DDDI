@@ -1,0 +1,45 @@
+cff-version: 1.2.0
+title: DDDI
+message: >-
+  Interval-based Dynamic Discretization Discovery for
+  solving the Continuous-Time Service Network Design Problem
+type: software
+authors:
+  - given-names: Luke
+    family-names: Marshall
+    email: mathgeekcoder@gmail.com
+    orcid: 'https://orcid.org/0000-0003-0633-4004'
+  - given-names: Natashia
+    family-names: Boland
+  - given-names: Martin
+    family-names: Savelsbergh
+  - given-names: Mike
+    family-names: Hewitt
+identifiers:
+  - type: doi
+    value: 10.1287/trsc.2020.0994
+abstract: >-
+  We introduce an effective and efficient iterative
+  algorithm for solving the continuous-time service network
+  design problem. The algorithm achieves its efficiency by
+  carefully and dynamically refining partially time-expanded
+  network models so that only a small number of small
+  integer programs, defined over these networks, need to be
+  solved. An extensive computational study shows that the
+  algorithm performs well in practice, often using
+  time-expanded network models with size much less than 1%
+  (in terms of number of variables and constraints) of a
+  full time-expanded network model. The algorithm is
+  inspired by and has many similarities to the dynamic
+  discretization discovery algorithm introduced in Boland et
+  al. [Boland N, Hewitt M, Marshall L, Savelsbergh M (2017)
+  The continuous-time service network design problem. Oper.
+  Res. 65(5):1303–1321.], but generates smaller partially
+  time-expanded models, produces high-quality solutions more
+  quickly, and converges more quickly.
+keywords:
+  - service network design
+  - time-expanded network
+  - iterative refinement
+  - dynamic discretization discovery
+license: MIT

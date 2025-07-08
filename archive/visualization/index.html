@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+.ui-slider-wrapper { position: relative; }
+.ui-slider-wrapper .ui-slider-horizontal { width: 100%; }
+
+.ui-slider-labels { position: absolute; border: 1px solid transparent; 	font-family: monospace; font-size: 18px;}
+.ui-slider-label-ticks { border: 1px solid transparent; position: absolute; white-space: nowrap; }
+.ui-slider-label-ticks span { font-size: 0.9em; min-width: 1.2em; }
+
+.ui-slider-wrapper.horizontal { height: 4.5em; }
+.horizontal .ui-slider-labels { left: 0; right: 0; top: 0.7em }
+.horizontal .ui-slider-label-ticks { width: 1.2em; height: .8em; text-align: center; border-left: 1px solid #999; }
+.horizontal .ui-slider-label-ticks span { position: relative; display: inline-block; margin-left: -1.2em; top: .8em; }
+
+.ui-slider-wrapper.vertical { width: 4.5em; }
+.vertical .ui-slider-labels { top: 1px; bottom: 0; left: 0.7em; }
+.vertical .ui-slider-label-ticks { height: 1.2em; width: 0.8em; border-bottom: 1px solid #999; }
+.vertical .ui-slider-label-ticks span { position: relative; display: inline-block; margin-left: 1em; top: .6em; }
+
+.overlay {
+  fill: none;
+  pointer-events: all;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.dot {
+  stroke: none;
+}
+
+a {
+  color: #5BBEAA;
+}
+
+.extent {
+  fill: #000;
+  fill-opacity: .125;
+  stroke: #fff;
+}
+
+#slider {
+  width: 1024px;
+}
+
+body {
+  margin: 20px;
+}
+
+.y.axis2 path,
+.y.axis2 line {
+fill: none;
+stroke: black;
+shape-rendering: crispEdges;
+}
+
+.label {
+	font-weight: bold;
+	}
+
+text {
+	font-family: monospace;
+	font-size: 14px;
+}
+
+</style>
+<body>
+<div id="svg"></div>
+<div id="slider"></div>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+<link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/themes/smoothness/jquery-ui.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js"></script>
+
+<script>
+(function( $, undefined ) {
+    $.widget( "ui.labeledslider", $.ui.slider, {
+
+      version: "@VERSION",
+
+      options: {
+         tickInterval: 0,
+         tweenLabels: true,
+         tickLabels: null,
+         tickArray: []
+      },
+
+      uiSlider: null,
+      tickInterval: 0,
+      tweenLabels: true,
+
+      _create: function( ) {
+
+         this._detectOrientation();
+
+         this.uiSlider =
+             this.element
+                .wrap( '<div class="ui-slider-wrapper ui-widget"></div>' )
+                .before( '<div class="ui-slider-labels"></div>' )
+                .parent()
+                .addClass( this.orientation )
+                .css( 'font-size', this.element.css('font-size') );
+
+         this._super();
+
+         this.element.removeClass( 'ui-widget' )
+
+         this._alignWithStep();
+
+         if ( this.orientation == 'horizontal' ) {
+            this.uiSlider
+               .width( this.element.css('width') );
+         } else {
+            this.uiSlider
+               .height( this.element.css('height') );
+         }
+
+         this._drawLabels();
+      },
+
+      _drawLabels: function () {
+
+         var labels = this.options.tickLabels || {},
+             $lbl = this.uiSlider.children( '.ui-slider-labels' ),
+             dir = this.orientation == 'horizontal' ? 'left' : 'bottom',
+             min = this.options.min,
+             max = this.options.max,
+             inr = this.tickInterval,
+             cnt = ( max - min ),
+             tickArray = this.options.tickArray,
+             ta = tickArray.length > 0,
+             label, pt,
+             i = 0;
+
+         $lbl.html('');
+
+         for (;i<=cnt;i++) {
+
+            if ( ( !ta && i%inr == 0 ) || ( ta && tickArray.indexOf( i+min ) > -1 ) ) {
+
+               label = labels[i+min] ? labels[i+min] : (this.options.tweenLabels ? i+min : '');
+
+               $('<div>').addClass( 'ui-slider-label-ticks' )
+                   .css( dir, (Math.round( ( i / cnt ) * 10000 ) / 100) + '%' )
+                   .html( '<span>'+( label )+'</span>' )
+                   .appendTo( $lbl );
+
+            }
+         }
+
+      },
+
+      _setOption: function( key, value ) {
+
+          this._super( key, value );
+
+          switch ( key ) {
+
+             case 'tickInterval':
+             case 'tickLabels':
+             case 'tickArray':
+             case 'min':
+             case 'max':
+             case 'step':
+
+                this._alignWithStep();
+                this._drawLabels();
+                break;
+
+             case 'orientation':
+
+                this.element
+                   .removeClass( 'horizontal vertical' )
+                   .addClass( this.orientation );
+
+                this._drawLabels();
+                break;
+          }
+       },
+
+       _alignWithStep: function () {
+          if ( this.options.tickInterval < this.options.step )
+            this.tickInterval = this.options.step;
+          else
+            this.tickInterval = this.options.tickInterval;
+       },
+
+       _destroy: function() {
+          this._super();
+          this.uiSlider.replaceWith( this.element );
+       },
+
+       widget: function() {
+          return this.uiSlider;
+       }
+
+   });
+
+}(jQuery));
+</script>
+
+
+  <!-- // <script src="d3.v3.min.js"></script> -->
+  <script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+  <script src="data.txt"></script>
+  <script>
+  var margin = {top: 20, right: 20, bottom: 30, left: 40},
+  width = 1024 - margin.left - margin.right,
+  height = 600 - margin.top - margin.bottom;
+
+  var x = d3.scale.linear()
+  .range([0, width]);
+
+  var y = d3.scale.linear()
+  .range([height, 0]);
+
+  var color = d3.scale.category10();
+
+  var xAxis = d3.svg.axis()
+  .scale(x)
+  .orient("bottom");
+  
+  var yAxis = d3.svg.axis()
+  .scale(y)
+  .orient("left");
+
+  	var max_iterations = -Infinity;
+    var u = {}, it = {}, a = [];
+
+	for(var i = 0, l = data.length; i < l; ++i){
+		if (data[i].i > max_iterations) 
+			max_iterations = data[i].i;
+   
+		if(!it.hasOwnProperty(data[i].i))
+			it[data[i].i] = {}
+
+		if(!it[data[i].i].hasOwnProperty(data[i].n))
+			it[data[i].i][data[i].n] = 0
+
+		it[data[i].i][data[i].n] += 1
+		
+		if(u.hasOwnProperty(data[i].n)) {
+			 continue;
+		  }
+		  a.push(data[i].n);
+		  u[data[i].n] = 1;
+	}
+  yAxis.tickValues(a)
+  
+Number.prototype.padLeft = function (n,str){
+if (this == 0) return Array(n).join('\u00A0')
+    return Array(n-String(this).length+1).join(str||'\u00A0')+this;
+}
+  
+  var yAxis2 = d3.svg.axis()
+    .scale(y)
+	.orient("right")
+	.tickValues(a)
+	.tickFormat(function(d) { var total = 0; for (var i = 0; i <= max_iterations; ++i) if (i in it && d in it[i]) total += it[i][d];  return d.padLeft(2) + ": " + total.padLeft(3) + "," + (d in it[max_iterations] ? it[max_iterations][d] : 0).padLeft(2); })
+  
+  
+  var svg = d3.select("#svg")
+  .append("svg")
+  .attr("width", width + margin.left + margin.right + 100)
+  .attr("height", height + margin.top + margin.bottom);
+
+  var shiftKey;
+
+  var rect,node;
+
+  svg = svg.append("g")
+  .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+  
+    x.domain(d3.extent(data, function(d) { return d.t; })).nice();
+    y.domain(d3.extent(data, function(d) { return d.n; })).nice();
+
+	div = svg.append('g').attr("clip-path", "url(#clip)")
+	div.call(d3.behavior.zoom().x(x).scaleExtent([1, 50]).on("zoom", zoom));
+
+    svg.append("g")
+    .attr("class", "x axis")
+    .attr("transform", "translate(0," + height + ")")
+    .call(xAxis)
+    .append("text")
+    .attr("class", "label")
+    .attr("x", width - 10)
+    .attr("y", -6)
+    .style("text-anchor", "end")
+    .text("Time");
+
+    svg.append("g")
+    .attr("class", "y axis")
+    .call(yAxis)
+    .append("text")
+    .attr("class", "label")
+    .attr("transform", "rotate(-90)")
+    .attr("y", 6)
+    .attr("dy", "-2.6em")
+    .style("text-anchor", "end")
+    .text("Nodes")
+
+	svg.append("g")
+    .attr("class", "y axis2")
+    .call(yAxis2)
+ 	 .attr("transform", "translate(" + width + " ,0)")	
+   .append("text")
+    .attr("class", "label")
+	.attr("transform", "rotate(-90)")
+	.attr("y", 6)
+    .attr("dy", "-0.6em")
+    .style("text-anchor", "end")
+    .text("Count")
+
+  var clip = svg.append("defs").append("svg:clipPath")
+	.attr("id", "clip")
+	.append("svg:rect")
+	.attr("id", "clip-rect")
+	.attr("x", "0")
+	.attr("y", "-5")
+	.attr("width", width)
+	.attr("height", height+10);
+	
+  rect = div.append('rect')
+  .attr('pointer-events', 'all')
+  .attr('width', width)
+  .attr('height', height)
+  .style('fill', 'none');
+  
+  
+   node = div.selectAll(".dot")
+  .data(data)
+  .enter().append("circle")
+  .attr("class", "dot")
+  .attr("r", 3.5)
+  .attr("cx", function(d) { return x(d.t); })
+  .attr("cy", function(d) { return y(d.n); })
+  .style("fill", function(d) { return color(1); });
+  
+  function zoom() {
+	node.attr("cx", function(d) { return x(d.t); })
+    //.attr("cy", function(d) { return y(d.n); });
+    d3.select('.x.axis').call(xAxis);
+    d3.select('.y.axis').call(yAxis);
+	d3.select('.y.axis2').call(yAxis2);
+
+  }
+  
+  d3.selection.prototype.moveToFront = function() {
+  return this.each(function(){
+    this.parentNode.appendChild(this);
+  });
+};
+  
+$(function() {
+	node.filter(function(d) { return d.i == max_iterations }).style("fill", function(d) { return color(2); }).style('fill-opacity', '1').moveToFront();
+  
+  $( "#slider" ).labeledslider({
+	range: true,
+	min: 0,
+	max: max_iterations,
+	values: [0,max_iterations],
+	slide: function( event, ui ) {
+	  var maxv = d3.min([ui.values[1], max_iterations]);
+	  var minv = d3.max([ui.values[0], 0]);
+
+	yAxis2.tickFormat(function(d) { var total = 0; for (var i = minv; i <= maxv; ++i) if (i in it && d in it[i]) total += it[i][d];  return d.padLeft(2) + ": " + total.padLeft(3) + "," + (d in it[maxv] ? it[maxv][d] : 0).padLeft(2); })
+	d3.select('.y.axis2').call(yAxis2);
+
+
+	node.filter(function(d) { return d.i > maxv || d.i < minv }).style("fill", 'lightgray').style('fill-opacity', '0.2');
+	node.filter(function(d) { return d.i >= minv && d.i < maxv }).style("fill", function(d) { return color(1); }).style('fill-opacity', '1').moveToFront();
+	node.filter(function(d) { return d.i == maxv }).style("fill", function(d) { return color(2); }).style('fill-opacity', '1').moveToFront();
+  }});
+});
+  </script>
+</body>

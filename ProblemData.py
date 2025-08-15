@@ -44,6 +44,9 @@ class ProblemData(object):
         self.solution = solution
         self.fixed_paths = fixed_paths
 
+        if self.var_cost == []:
+            self.var_cost = [{} for _ in range(len(self.commodities))]
+
 
     ## Scales the time horizon (network and commodities) for this problem
     def scale(self, scale):

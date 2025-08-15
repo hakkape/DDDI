@@ -56,9 +56,11 @@ def run_all(selected_instances, output_dir: str):
     merge_csv_files(output + output_dir + '.csv', *[output + instance + ".csv" for instance in instances])
 
 
-run_all(InstanceClassification.LCLF, "LCLF")
-run_all(InstanceClassification.LCHF, "LCHF")
-run_all(InstanceClassification.HCLF, "HCLF")
-run_all(InstanceClassification.HCHF, "HCHF")
+
+if __name__ == "__main__":
+    run_all(InstanceClassification.LCLF, "LCLF")
+    run_all(InstanceClassification.LCHF, "LCHF")
+    run_all(InstanceClassification.HCLF, "HCLF")
+    run_all(InstanceClassification.HCHF, "HCHF")
 
 

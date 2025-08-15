@@ -4,6 +4,8 @@ from os.path import isdir, join, exists
 from ProblemData import ProblemData
 from IntervalSolver import IntervalSolver
 from gurobipy import Env
+from os import makedirs
+from merge import merge_csv_files
 
 def output_csv(path, file, instance, output, environment):
     csv_filename = output + file + "_" + instance + ".csv"
@@ -26,16 +28,14 @@ def output_csv(path, file, instance, output, environment):
         print("Exception occurred:", type(inst))
         print(inst.args)
 
-def run_all(instance_type):
+def run_all(input_path, output_path, instance_type):
     env = Env("")
 
-    # Set the path to the instances and output directory based on the instance type
-    path = f'../SND-RR/Instances/{instance_type}/'
-    output = f'output/{instance_type}/'
+    path = f'{input_path}{instance_type}/'
+    output = f'{output_path}{instance_type}/'
 
     # Create the output directory if it does not exist
     if not exists(output):
-        from os import makedirs
         makedirs(output)
 
     # List all instance directories in the path
@@ -51,14 +51,20 @@ def run_all(instance_type):
             if not exists(output + instance + "_" + i + ".csv"):
                 output_csv(path, instance, i, output, env)
 
+    # List all subdirectories (ids) within each instance directory
+    files = [output + instance + "_" + id + ".csv" 
+            for instance in listdir(path) if isdir(join(path, instance)) 
+            for id in listdir(join(path, instance)) if isdir(join(path, instance, id))]
+
+    merge_csv_files(output + instance_type + '.csv', *files)
 
 
-instance_type = 'hub_and_spoke'
-run_all(instance_type)
+if __name__ == "__main__":
+    # Set the path to the instances and output directory based on the instance type
+    # Assumes the SND-RR repo is in the parent directory
+    input_path = '../SND-RR/Instances/'
+    output_path = 'output/'
 
-
-# Example usage of the IntervalSolver with a specific instance
-# path = r'../SND-RR/Instances/hub_and_spoke/Instance-32/0'
-# p = ProblemData.read_directory(path)
-# s = IntervalSolver(p, fixed_paths=p.fixed_paths, gap=0.01, environment=env)
-# info = s.solve()
+    run_all(input_path, output_path, 'critical_times')
+    run_all(input_path, output_path, 'hub_and_spoke')
+    run_all(input_path, output_path, 'designated_paths')

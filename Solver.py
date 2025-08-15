@@ -1,24 +1,16 @@
-# Abstraction from CPLEX and GUROBI
-#from cplex import *
-from gurobipy import *
-from decimal import *
-import itertools
-from operator import itemgetter
-
-GUROBI = 0
-CPLEX = 1
+# Was a wrapper for CPLEX and GUROBI, but I've removed CPLEX
+# This entire class will be removed at some point
+from gurobipy import Env, GRB, Model
 
 ##
-## Abstraction for gurobi/cplex
+## Abstraction for gurobi
 ##
 class Solver(object):
-    """Abstract layer for Gurobi/Cplex"""
-    __slots__ = ['solver', 'model', 'cplex_batch', 'cplex_vars', 'cplex_cons', 'cplex_callback', 'cplex_presolve_callback']
+    """Abstract layer for Gurobi"""
+    __slots__ = ['model']
 
-    def __init__(self, solver=GUROBI, minimize=True, quiet=True, use_callback=True, env=None):
-        self.solver = solver
-
-        self.model = Model("model_name", env=env if env != None else Env(""))
+    def __init__(self, minimize=True, quiet=True, use_callback=True, env=None):
+        self.model = Model("model_name", env=env if env is not None else Env(""))
         self.model.modelSense = GRB.MINIMIZE if minimize else GRB.MAXIMIZE
         self.model.setParam('OutputFlag', not quiet)
 
@@ -32,25 +24,8 @@ class Solver(object):
         self.model.setParam(GRB.param.Threads, val)
 
     def set_aggressive_cuts(self):
-        if self.solver == GUROBI:
-            self.model.setParam(GRB.param.MIPFocus, 2)
-            self.model.setParam(GRB.param.PrePasses, 3)
-        #else:
-        #    #self.model.parameters.mip.cuts.cliques.set(2)
-        #    #self.model.parameters.mip.cuts.covers.set(2)
-        #    #self.model.parameters.mip.cuts.disjunctive.set(2)
-        #    #self.model.parameters.mip.cuts.flowcovers.set(2)
-        #    #self.model.parameters.mip.cuts.gomory.set(2)
-        #    #self.model.parameters.mip.cuts.gubcovers.set(2)
-        #    #self.model.parameters.mip.cuts.implied.set(2)
-        #    #self.model.parameters.mip.cuts.liftproj.set(2)
-        #    #self.model.parameters.mip.cuts.mcfcut.set(2)
-        #    #self.model.parameters.mip.cuts.mircut.set(2)
-        #    #self.model.parameters.mip.cuts.pathcut.set(2)
-        #    #self.model.parameters.mip.cuts.zerohalfcut.set(2)
-
-        #    self.model.parameters.emphasis.mip.set(2)
-        #    self.model.parameters.mip.strategy.probe.set(2)
+        self.model.setParam(GRB.param.MIPFocus, 2)
+        self.model.setParam(GRB.param.PrePasses, 3)
 
     # update variables (batch mode for gurobi & cplex)
     def update(self):
@@ -70,6 +45,8 @@ class Solver(object):
         else:
             self.model.optimize()
 
+    def presolve(self):
+        return self.model.presolve()
 
     def is_optimal(self):
         return self.model.status == GRB.status.OPTIMAL
@@ -78,10 +55,10 @@ class Solver(object):
         return self.model.status in [GRB.status.TIME_LIMIT, GRB.status.INTERRUPTED]
 
 
-    def objVal(self):
+    def objVal(self) -> float:
         return self.model.objVal
 
-    def objBound(self):
+    def objBound(self) -> float:
         return self.model.objBound
 
     def val(self, var):

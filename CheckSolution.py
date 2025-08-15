@@ -1,8 +1,29 @@
-from Solver import *
-import itertools
-from tools import *
+from Solver import Solver
+from gurobipy import GRB
 import math
 from collections import defaultdict
+from typing import TYPE_CHECKING, NamedTuple
+if TYPE_CHECKING:
+    from IntervalSolver import IntervalSolver
+
+# A solution graph node can either be a commodity or consolidation
+class SolutionGraphCommodity(NamedTuple):
+    commodity: int
+    node: int
+
+    @property
+    def commodities(self):
+        return [self.commodity]
+
+class SolutionGraphConsolidation(NamedTuple):
+    arc: tuple[int, int]
+    commodities: frozenset[int]
+
+    @property
+    def node(self):
+        return self.arc[0]
+
+SolutionGraphNode = SolutionGraphCommodity | SolutionGraphConsolidation
 
 # Time precision
 PRECISION = 2 # decimal places
@@ -12,21 +33,21 @@ class CheckSolution(object):
     """Takes the solution from a simplified network flow model and validates/corrects for original problem"""
     __slots__ = ['solution_paths', 'consolidations', 'model', 't', 'x', 'L', 'problem', 'h', 'environment']
 
-    def __init__(self, problem, env=None):
+    def __init__(self, problem: 'IntervalSolver', env=None):
         self.problem = problem
         self.environment = env
 
     def infeasible(self):
-        return len([c for k,c in enumerate(self.problem.commodities) if c['a'][1] + self.problem.shortest_path(k,c['a'][0],c['b'][0]) > c['b'][1]]) > 0
+        return len([c for k,c in enumerate(self.problem.commodities) if c.a[1] + self.problem.shortest_path(k,c.a[0],c.b[0]) > c.b[1]]) > 0
 
     def validate(self, solution_paths, consolidations):
         self.solution_paths = solution_paths
         self.consolidations = consolidations
 
-        if self.consolidations == None:
+        if self.consolidations is None:
             return False
 
-        lp = self.model = Solver(self.problem.model.solver, use_callback=False, env=self.environment)
+        lp = self.model = Solver(use_callback=False, env=self.environment)
 
         # dispatch time at each node in path-graph, multiple nodes for multiple dispatches
         t = self.t = [{(a[0],a[1],K): lp.addVar(obj=0, lb=0, ub=lp.inf(), name='t' + str((k,a,K))) 
@@ -36,15 +57,13 @@ class CheckSolution(object):
 
         # slack variables for each consolidation
         if FAST_CONSOLIDATIONS:
-                x = self.x = {(a,min(group),k2,group): lp.addVar(obj=self.problem.network[a[0]][a[1]]['fixed_cost']
-                                           #+self.problem.network[a[0][0]][a[1][0]]['var_cost']*((self.problem.commodities[k1]['q'] + self.problem.commodities[k2]['q']) % 1)
+                x = self.x = {(a,min(group),k2,group): lp.addVar(obj=self.problem.network.edge_data(a[0], a[1])['fixed_cost']
                                            , lb=0, ub=lp.inf(), name='x' + str(a) + ',' + str((min(group),k2)))
                         for a, K_coll in self.consolidations.items()
                             for group in K_coll
                                 for k2 in group if k2 > min(group)}
         else:
-                x = self.x = {(a,k1,k2,group): lp.addVar(obj=self.problem.network[a[0]][a[1]]['fixed_cost'] 
-                                                   #+self.problem.network[a[0][0]][a[1][0]]['var_cost']*((self.problem.commodities[k1]['q'] + self.problem.commodities[k2]['q']) % 1)
+                x = self.x = {(a,k1,k2,group): lp.addVar(obj=self.problem.network.edge_data(a[0], a[1])['fixed_cost'] 
                                            , lb=0, ub=lp.inf(), name='x' + str(a) + ',' + str((k1,k2)))
                         for a, K_coll in self.consolidations.items()
                             for group in K_coll
@@ -83,37 +102,34 @@ class CheckSolution(object):
             for n1,n2,d in path_graph.edges(data=True):
                 for K in d['K']:
                     # origin dispatch time >= origin time
-                    if n1 == c['a'][0]:
-                        #lp.addConstr(t[k][n1,n2,K] == h[k][n1,n2,K] + c['a'][1], 'L' + str((k,n1,n2,K)))
-                        lp.addConstr(t[k][n1,n2,K] >= c['a'][1], 'L' + str((k,n1,n2,K)))
+                    if n1 == c.a[0]:
+                        lp.addConstr(t[k][n1,n2,K] >= c.a[1], 'L' + str((k,n1,n2,K)))
 
                     # dispatch time >= last dispatch + transit time along path
                     for _,n3,d2 in path_graph.out_edges(n2, data=True):
                         for K2 in d2['K']:
-                            #lp.addConstr(t[k][n2,n3,K2] == h[k][n2,n3,K2] + t[k][n1,n2,K] + self.problem.transit(n1,n2), 'L' + str((k,n1,n2,n3,K,K2)))
                             lp.addConstr(t[k][n2,n3,K2] >= t[k][n1,n2,K] + self.problem.transit(n1,n2), 'L' + str((k,n1,n2,n3,K,K2)))
 
                     # destination dispatch time <= destination time
-                    if n2 == c['b'][0]:
-                        #lp.addConstr(t[k][n1, n2, K] + h[k][n2,n2,K] == c['b'][1] - self.problem.transit(n1,n2), 'U' + str((k,n1,n2,K)))
-                        lp.addConstr(t[k][n1, n2, K] <= c['b'][1] - self.problem.transit(n1,n2), 'U' + str((k,n1,n2,K)))
+                    if n2 == c.b[0]:
+                        lp.addConstr(t[k][n1, n2, K] <= c.b[1] - self.problem.transit(n1,n2), 'U' + str((k,n1,n2,K)))
 
-                # consolidating dispatch time is equal + slack variable
-                if FAST_CONSOLIDATIONS:
-                    k1 = min(K)
-                    lp.addConstrs((x[((n1,n2),k1,k2,K)] >= t[k1][n1, n2, K] - t[k2][n1, n2, K] for k2 in K if k1 < k2))
-                    lp.addConstrs((x[((n1,n2),k1,k2,K)] >= t[k2][n1, n2, K] - t[k1][n1, n2, K] for k2 in K if k1 < k2))
-                else:
-                    for k1 in K:
-                        for k2 in K:
-                            if k1 < k2:
-                                lp.addConstr(x[((n1,n2),k1,k2,K)] >= t[k1][n1, n2, K] - t[k2][n1, n2, K], 'a' + str((n1, n2, K)))
-                                lp.addConstr(x[((n1,n2),k1,k2,K)] >= t[k2][n1, n2, K] - t[k1][n1, n2, K], 'a' + str((n1, n2, K)))
+                    # consolidating dispatch time is equal + slack variable
+                    if FAST_CONSOLIDATIONS:
+                        k1 = min(K)
+                        lp.addConstrs((x[((n1,n2),k1,k2,K)] >= t[k1][n1, n2, K] - t[k2][n1, n2, K] for k2 in K if k1 < k2))
+                        lp.addConstrs((x[((n1,n2),k1,k2,K)] >= t[k2][n1, n2, K] - t[k1][n1, n2, K] for k2 in K if k1 < k2))
+                    else:
+                        for k1 in K:
+                            for k2 in K:
+                                if k1 < k2:
+                                    lp.addConstr(x[((n1,n2),k1,k2,K)] >= t[k1][n1, n2, K] - t[k2][n1, n2, K], 'a' + str((n1, n2, K)))
+                                    lp.addConstr(x[((n1,n2),k1,k2,K)] >= t[k2][n1, n2, K] - t[k1][n1, n2, K], 'a' + str((n1, n2, K)))
 
-                # note above is equivalent to following. Both are slow for large consolidation groups!  
-                # Perhaps need to use matrix API?
-                #lp.addConstrs((x[((n1,n2),k1,k2,K)] >= t[k1][n1, n2, K] - t[k2][n1, n2, K] for k2 in K for k1 in K if k1 < k2))
-                #lp.addConstrs((x[((n1,n2),k1,k2,K)] >= t[k2][n1, n2, K] - t[k1][n1, n2, K] for k2 in K for k1 in K if k1 < k2))
+                    # note above is equivalent to following. Both are slow for large consolidation groups!  
+                    # Perhaps need to use matrix API?
+                    #lp.addConstrs((x[((n1,n2),k1,k2,K)] >= t[k1][n1, n2, K] - t[k2][n1, n2, K] for k2 in K for k1 in K if k1 < k2))
+                    #lp.addConstrs((x[((n1,n2),k1,k2,K)] >= t[k2][n1, n2, K] - t[k1][n1, n2, K] for k2 in K for k1 in K if k1 < k2))
 
                     
 
@@ -194,11 +210,11 @@ class CheckSolution(object):
         #    for n1,n2 in pairwise(path):
         #        consolidation[(n1,n2,self.model.val(self.t[k][n1]))].add(k)
          
-        return sorted([(c[:2], frozenset(k)) for c,k in consolidation.items() if len(k) > 1])
+        return sorted([SolutionGraphConsolidation(c[:2], frozenset(k)) for c,k in consolidation.items() if len(k) > 1])
 
 
     # get new consolidations and calculate new solution cost
-    def get_solution_cost(self):
+    def get_solution_cost(self) -> float:
         consolidation = {}
         var_cost = 0
         holding_cost = 0
@@ -207,23 +223,23 @@ class CheckSolution(object):
             for n1,n2,d in path_graph.edges(data=True):
                 for K,q in zip(d['K'],d['q']):
                     a = (n1,n2,round(self.model.val(self.t[k][n1,n2,K]), PRECISION))
-                    consolidation[a] = consolidation.get(a, 0) + self.problem.commodities[k]['q']*q
-                    var_cost += self.problem.problem.var_cost[k].get((n1,n2),0) * self.problem.commodities[k]['q']*q
+                    consolidation[a] = consolidation.get(a, 0) + self.problem.commodities[k].q*q
+                    var_cost += self.problem.problem.var_cost[k].get((n1,n2),0) * self.problem.commodities[k].q*q
 
                     ## TODO: support split correctly
-                    #holding_cost += self.problem.network[n1][n1]['var_cost'] * self.problem.commodities[k]['q']*q * self.model.val(self.h[k][n1,n2,K])
+                    #holding_cost += self.problem.network[n1][n1]['var_cost'] * self.problem.commodities[k].q*q * self.model.val(self.h[k][n1,n2,K])
 
-                    #if n2 == self.problem.commodities[k]['b'][0]:
-                    #    holding_cost += self.problem.network[n2][n2]['var_cost'] * self.problem.commodities[k]['q']*q * self.model.val(self.h[k][n2,n2,K])
+                    #if n2 == self.problem.commodities[k].b[0]:
+                    #    holding_cost += self.problem.network[n2][n2]['var_cost'] * self.problem.commodities[k].q*q * self.model.val(self.h[k][n2,n2,K])
 
 
         #for k, path in enumerate(self.solution_paths):
         #    for n1,n2 in zip(path, path[1:]):
         #        a = (n1,n2,round(self.model.val(self.t[k][n1]), PRECISION))
-        #        consolidation[a] = consolidation.get(a, 0) + self.problem.commodities[k]['q']
-        #        var_cost += self.problem.network[n1][n2]['var_cost'] * self.problem.commodities[k]['q']
+        #        consolidation[a] = consolidation.get(a, 0) + self.problem.commodities[k].q
+        #        var_cost += self.problem.network[n1][n2]['var_cost'] * self.problem.commodities[k].q
 
-        return var_cost + holding_cost + sum(self.problem.network[a][b]['fixed_cost'] * math.ceil(q/self.problem.network[a][b]['capacity']) for (a,b,t), q in consolidation.items())
+        return var_cost + holding_cost + sum(self.problem.network.edge_data(a, b)['fixed_cost'] * math.ceil(q/self.problem.network.edge_data(a, b)['capacity']) for (a,b,t), q in consolidation.items())
 
 #    # get broken consolidations
 #    def get_broken_consolidations(self):
@@ -269,10 +285,10 @@ class CheckSolution(object):
         return stats
 
     def print_solution(self):
-        if self.model.status == GRB.status.OPTIMAL:
+        if self.model.model.status == GRB.status.OPTIMAL:
             print('\nSolution:')
 
-            times = sorted(set([self.t[k][path[n]].x for k, path in enumerate(self.solution_paths) for n in range(len(path) - 1)]))
+            times = sorted(set([self.t[k][path[n]].X for k, path in enumerate(self.solution_paths) for n in range(len(path) - 1)]))
 
             # unique t        
             for time in range(len(times)):
@@ -280,7 +296,7 @@ class CheckSolution(object):
 
                 for k, path in enumerate(self.solution_paths):
                     for a in zip(path,path[1:]):
-                        if self.t[k][a[0]].x == times[time]:
+                        if self.t[k][a[0]].X == times[time]:
                             if a not in tmp:
                                 tmp[a] = []
 
@@ -290,7 +306,7 @@ class CheckSolution(object):
                     print("t={3}, k={0}, a=({1},{2})".format(col, a[0], a[1], times[time]))
 
             for a,v in self.x.items():
-                if v.x != 0:
+                if v.X != 0:
                     print(v)
 
     #def time_windows(self, k, path):

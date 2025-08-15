@@ -1,12 +1,89 @@
 import itertools
-import functools
-from operator import itemgetter
+import networkx as nx
 
-# zips a sequence on itself - "s -> (s0,s1), (s1,s2), (s2, s3), ..."
-def pairwise(iterable):
-    a, b = itertools.tee(iterable)
-    next(b, None)
-    return zip(a, b)
+# Improve type support for networkx
+from collections.abc import Collection, Iterable, Hashable
+from typing import Any, Generic, TypeVar
+
+NodeType = TypeVar("NodeType", bound=Hashable)
+
+class TypedDiGraph(Generic[NodeType]):
+    def __init__(self) -> None:
+        self.nx_graph = nx.DiGraph()
+
+    @property
+    def G(self):
+        return self.nx_graph
+
+    def add_edge(self, u_of_edge: NodeType, v_of_edge: NodeType, **attr: Any) -> None:
+        self.nx_graph.add_edge(u_of_edge, v_of_edge, **attr)
+
+    def edges(self, **kwargs: Any) -> Collection[tuple[NodeType, NodeType]]:
+        return self.nx_graph.edges(data=False, **kwargs)  # type: ignore[no-any-return]
+
+    def edges_data(self, **kwargs: Any) -> Iterable[tuple[NodeType, NodeType, dict[Any, Any]]]:
+        return self.nx_graph.edges(data=True, **kwargs)  # type: ignore[no-any-return]
+
+    def add_edges_from(self, edges_for_adding: Iterable[tuple[NodeType, NodeType, dict[Any, Any]]]) -> None:
+        self.nx_graph.add_edges_from(edges_for_adding)
+
+    def add_weighted_edges_from(self, edges_for_adding: Iterable[tuple[NodeType, NodeType, float]]) -> None:
+        self.nx_graph.add_weighted_edges_from(edges_for_adding)
+
+    def edge_data(self, n1: NodeType, n2: NodeType) -> dict[Any, Any]:
+        return self.nx_graph.edges[(n1, n2)]
+    
+    def has_edge(self, u: NodeType, v: NodeType) -> bool:
+        return self.nx_graph.has_edge(u, v)
+
+    def remove_edge(self, u: NodeType, v: NodeType) -> None:
+        self.nx_graph.remove_edge(u, v)
+
+    def out_edges_data(self, n: NodeType, **kwargs: Any) -> Iterable[tuple[NodeType, NodeType, dict[Any, Any]]]:
+        return self.nx_graph.out_edges(n, data=True, **kwargs)  # type: ignore[no-any-return]
+
+    def in_edges_data(self, n: NodeType, **kwargs: Any) -> Iterable[tuple[NodeType, NodeType, dict[Any, Any]]]:
+        return self.nx_graph.in_edges(n, data=True, **kwargs)  # type: ignore[no-any-return]
+
+    def out_edges(self, n: NodeType, **kwargs: Any) -> Iterable[tuple[NodeType, NodeType]]:
+        return self.nx_graph.out_edges(n, data=False, **kwargs)  # type: ignore[no-any-return]
+
+    def in_edges(self, n: NodeType, **kwargs: Any) -> Iterable[tuple[NodeType, NodeType]]:
+        return self.nx_graph.in_edges(n, data=False, **kwargs)  # type: ignore[no-any-return]
+
+    def add_node(self, n: NodeType, **attr: Any) -> None:
+        self.nx_graph.add_node(n, **attr)
+
+    def add_nodes_from(self, nodes_for_adding: Iterable[NodeType]) -> None:
+        self.nx_graph.add_nodes_from(nodes_for_adding)
+
+    def nodes(self, **kwargs: Any) -> Collection[NodeType]:
+        return self.nx_graph.nodes(data=False, **kwargs)  # type: ignore[no-any-return]
+
+    def nodes_data(self, **kwargs: Any) -> Iterable[tuple[NodeType, dict[Any, Any]]]:
+        return self.nx_graph.nodes(data=True, **kwargs)  # type: ignore[no-any-return]
+
+    def node_data(self, n: NodeType) -> dict[Any, Any]:
+        return self.nx_graph.nodes[n]
+
+    def remove_node(self, n: NodeType) -> None:
+        self.nx_graph.remove_node(n)
+
+    def copy(self) -> "TypedDiGraph[NodeType]":
+        new_graph = TypedDiGraph[NodeType]()
+        new_graph.nx_graph = self.nx_graph.copy()
+        return new_graph
+    
+    def subgraph(self, nodes: Iterable[NodeType]) -> "TypedDiGraph[NodeType]":
+        new_graph = TypedDiGraph[NodeType]()
+        new_graph.nx_graph = self.nx_graph.subgraph(nodes)
+        return new_graph
+
+    def has_path(self, source: NodeType, target: NodeType) -> bool:
+        return nx.has_path(self.nx_graph, source, target)
+
+    def has_node(self, n: NodeType) -> bool:
+        return self.nx_graph.has_node(n)
 
 # zips a sequence on itself - "s -> (s0,s1,s2), (s1,s2,s3), (s2,s3,s4), ..."
 def triple(iterable):
@@ -26,7 +103,7 @@ def accumulate(iterator):
 def partition(pred, iterable):
     'Use a predicate to partition entries into false entries and true entries'
     # partition(is_odd, range(10)) --> 0 2 4 6 8   and  1 3 5 7 9
-    return [_ for _ in iterable if pred(_) == False], [_ for _ in iterable if pred(_) == True]
+    return [_ for _ in iterable if not pred(_)], [_ for _ in iterable if pred(_)]
 #    t1, t2 = itertools.tee(iterable)
 #    return list(itertools.filterfalse(pred, t1)), list(filter(pred, t2))
 

@@ -2,13 +2,39 @@ import networkx as nx
 import random
 import math
 import csv
-from tools import pairwise
+from typing import NamedTuple
+from itertools import pairwise
+
+class NodeTime(NamedTuple):
+    node: int
+    time: float
+
+class NodeInterval(NamedTuple):
+    node: int
+    t1: float
+    t2: float
+
+    @property
+    def T(self):
+        return (self.node, self.t1, self.t2)
+
+class TimedArc(NamedTuple):
+    source: NodeInterval
+    target: NodeInterval
+
+class Commodity(object):
+    __slots__ = ['a', 'b', 'q']
+
+    def __init__(self, a: NodeTime, b: NodeTime, q: float):
+        self.a = a
+        self.b = b
+        self.q = q
 
 class ProblemData(object):
     """description of class"""
     __slots__ = ['commodities', 'network', 'position', 'capacities', 'fixed_cost', 'var_cost', 'solution', 'fixed_paths']
 
-    def __init__(self, commodities, network, position=None, capacities={}, fixed_cost={}, var_cost={}, solution=None, fixed_paths=None):
+    def __init__(self, commodities: list[Commodity], network: dict[int, dict[int, float]], position=None, capacities={}, fixed_cost={}, var_cost: list[dict[tuple[int, int], float]]=[], solution=None, fixed_paths=None):
         self.commodities = commodities
         self.network = network
         self.position = position
@@ -22,8 +48,8 @@ class ProblemData(object):
     ## Scales the time horizon (network and commodities) for this problem
     def scale(self, scale):
         for k,c in enumerate(self.commodities):
-            c['a'] = (c['a'][0], int(math.ceil(c['a'][1]*scale)))
-            c['b'] = (c['b'][0], int(math.ceil(c['b'][1]*scale)))
+            c.a = NodeTime(c.a[0], int(math.ceil(c.a[1]*scale)))
+            c.b = NodeTime(c.b[0], int(math.ceil(c.b[1]*scale)))
 
         for a, destinations in self.network.items():
             for b, transit_time in destinations.items():
@@ -38,8 +64,8 @@ class ProblemData(object):
         copy_cost = len(self.fixed_cost) == 0
 
         for k,c in enumerate(self.commodities):
-            c['a'] = (c['a'][0], int(math.ceil(c['a'][1]/float(minutes))))   # early up
-            c['b'] = (c['b'][0], int(math.floor(c['b'][1]/float(minutes))))  # late down
+            c.a = NodeTime(c.a[0], int(math.ceil(c.a[1]/float(minutes))))   # early up
+            c.b = NodeTime(c.b[0], int(math.floor(c.b[1]/float(minutes))))  # late down
 
         # transit times up
         for a, destinations in self.network.items():
@@ -57,8 +83,8 @@ class ProblemData(object):
         copy_cost = len(self.fixed_cost) == 0
 
         for k,c in enumerate(self.commodities):
-            c['a'] = (c['a'][0], int(math.floor(c['a'][1]/float(minutes))))   # early down
-            c['b'] = (c['b'][0], int(math.ceil(c['b'][1]/float(minutes))))  # late up
+            c.a = NodeTime(c.a[0], int(math.floor(c.a[1]/float(minutes))))   # early down
+            c.b = NodeTime(c.b[0], int(math.ceil(c.b[1]/float(minutes))))  # late up
 
         # transit times down
         for a, destinations in self.network.items():
@@ -76,8 +102,8 @@ class ProblemData(object):
         copy_cost = len(self.fixed_cost) == 0
 
         for k,c in enumerate(self.commodities):
-            c['a'] = (c['a'][0], int(round(c['a'][1]/float(minutes))))   # early
-            c['b'] = (c['b'][0], int(round(c['b'][1]/float(minutes))))  # late
+            c.a = NodeTime(c.a[0], int(round(c.a[1]/float(minutes))))   # early
+            c.b = NodeTime(c.b[0], int(round(c.b[1]/float(minutes))))  # late
 
         # transit times
         for a, destinations in self.network.items():
@@ -154,7 +180,7 @@ class ProblemData(object):
 
             while len(line) > 0 and not (line.startswith('horizon') or line.startswith("cost")):
                 tmp = line.split(',')
-                commodities.append({'a': (int(tmp[1]), float(tmp[4])), 'b': (int(tmp[2]), float(tmp[5])), 'q': float(tmp[3])})
+                commodities.append(Commodity(NodeTime(int(tmp[1]), float(tmp[4])), NodeTime(int(tmp[2]), float(tmp[5])), float(tmp[3])))
                 line = file.readline()
 
             ## load solution
@@ -185,11 +211,11 @@ class ProblemData(object):
                     line = file.readline() # skip header
 
                 while len(line) > 0:
-                    tmp = map(int, line.split(','))
+                    tmp = list(map(int, line.split(',')))
                     solution_cons.append((tuple(tmp[:2]), frozenset(tmp[2:])))
                     line = file.readline()
 
-            return ProblemData(commodities, network, positions if positions else None, capacities, fixed_cost, [var_cost]*len(commodities), (solution_cost, solution_paths, solution_cons) if solution_cost != None else None)
+            return ProblemData(commodities, network, positions if positions else None, capacities, fixed_cost, [var_cost]*len(commodities), (solution_cost, solution_paths, solution_cons) if solution_cost is not None else None)
 
     ##
     ## Save problem data in common format (Mike Hewitt)
@@ -205,31 +231,31 @@ class ProblemData(object):
             file.write("NODES," + str(len(graph.nodes())) + '\n')
             file.write("INDEX,Name,X-coordinate,Y-coordinate\n")
 
-            try:
-                position = self.position if self.position else nx.pygraphviz_layout(graph, prog='neato')
+            # try:
+            #     position = self.position if self.position else nx.pygraphviz_layout(graph, prog='neato')
         
-                for n in graph.nodes():
-                    file.write("{0},{1},{2},{3}\n".format(n, n, position[n][0], position[n][1]))
-            except:
-                # don't write position                
-                for n in graph.nodes():
-                    file.write("{0},{1},-,-\n".format(n, n))
+            #     for n in graph.nodes():
+            #         file.write("{0},{1},{2},{3}\n".format(n, n, position[n][0], position[n][1]))
+            # except:
+            # don't write position                
+            for n in graph.nodes():
+                file.write("{0},{1},-,-\n".format(n, n))
 
             file.write("ARCS," + str(len(graph.edges())) + '\n')
             file.write("Index,Origin,Destination,Variable Cost,Fixed Cost,Capacity,Travel time\n")
 
             for i, (a,b) in enumerate(graph.edges()):
-                file.write("{0},{1},{2},{3},{4},{5},{6}\n".format(i, a, b, self.var_cost[(a,b)] if (a,b) in self.var_cost else 0, self.fixed_cost[(a,b)] if (a,b) in self.fixed_cost else self.network[a][b], self.capacities[(a,b)] if (a,b) in self.capacities else 1, self.network[a][b]))
+                file.write("{0},{1},{2},{3},{4},{5},{6}\n".format(i, a, b, self.var_cost[0][(a,b)] if (a,b) in self.var_cost else 0, self.fixed_cost[(a,b)] if (a,b) in self.fixed_cost else self.network[a][b], self.capacities[(a,b)] if (a,b) in self.capacities else 1, self.network[a][b]))
 
             file.write("COMMODITIES," + str(len(self.commodities)) + '\n')
             file.write("Index,Origin,Destination,Demand/Size,Earliest available time,Latest delivery time\n")
 
             for k,c in enumerate(self.commodities):
-                file.write("{0},{1},{2},{3},{4},{5}\n".format(k, c['a'][0], c['b'][0], c['q'], c['a'][1], c['b'][1]))
+                file.write("{0},{1},{2},{3},{4},{5}\n".format(k, c.a[0], c.b[0], c.q, c.a[1], c.b[1]))
 
-            file.write("horizon={0}\n".format(max(c['b'][1] for c in self.commodities) - min(c['a'][1] for c in self.commodities)))
+            file.write("horizon={0}\n".format(max(c.b[1] for c in self.commodities) - min(c.a[1] for c in self.commodities)))
 
-            if solution != None:
+            if solution is not None:
                 file.write("cost={0}\n".format(solution[0]))
 
                 file.write("PATHS,{0}\n".format(len(solution[1])))
@@ -261,7 +287,7 @@ class ProblemData(object):
     ##
     @classmethod
     def random_problem(cls, network, commodity_number=None, commodity_range=(0,10), quantity_range=(0, 2), start_range=(0, 10), origin_set=[], dest_set=[], scope=None, scope_range=(1, 4)):
-        if commodity_number == None:
+        if commodity_number is None:
             commodity_number = commodity_range[1] - random.randrange(commodity_range[0], commodity_range[1])
 
         commodities = []
@@ -285,9 +311,9 @@ class ProblemData(object):
 
             # choose valid time window
             origin_time = random.randrange(start_range[0], start_range[1])
-            dest_time = origin_time + int(shortest_paths[origin][dest] * (scope if scope != None else random.uniform(scope_range[0], scope_range[1])))
-            
-            commodities.append({'a': (origin, origin_time), 'b': (dest, dest_time), 'q': max(0.01, round(quantity_range[1] - random.uniform(quantity_range[0], quantity_range[1]), 2))})
+            dest_time = origin_time + int(shortest_paths[origin][dest] * (scope if scope is not None else random.uniform(scope_range[0], scope_range[1])))
+
+            commodities.append(Commodity(NodeTime(origin, origin_time), NodeTime(dest, dest_time), max(0.01, round(quantity_range[1] - random.uniform(quantity_range[0], quantity_range[1]), 2))))
 
         return ProblemData(commodities, network)
 
@@ -299,7 +325,6 @@ class ProblemData(object):
     def read_tsp(cls, filename):
         commodities = []
         network = {}
-        positions = []
         capacities = {}
         fixed_cost = {}
         var_cost = {}
@@ -315,15 +340,15 @@ class ProblemData(object):
                     if v == 0:
                         fixed_cost[a,b] = 1000
 
-            M = float(filter(None, file.readline().rstrip().split(' '))[1])
+            M = float(list(filter(None, file.readline().rstrip().split(' ')))[1])
 
             for i in range(nodes - 1):
-                t = filter(None, file.readline().rstrip().split(' '))
+                t = list(filter(None, file.readline().rstrip().split(' ')))
 
-                commodities.append({'a': (i+1, float(t[0])), 'b': (0, M), 'q': 1/float(nodes+1)})
-                commodities.append({'a': (0, 0), 'b': (i+1,float(t[1])), 'q': 1/float(nodes+1)})
+                commodities.append(Commodity(NodeTime(i+1, float(t[0])), NodeTime(0, M), 1/float(nodes+1)))
+                commodities.append(Commodity(NodeTime(0, 0), NodeTime(i+1, float(t[1])), 1/float(nodes+1)))
 
-            return ProblemData(commodities, network, None, capacities, fixed_cost, var_cost, None)
+            return ProblemData(commodities, network, None, capacities, fixed_cost, [var_cost]*len(commodities), None)
 
 
     ##
@@ -333,7 +358,6 @@ class ProblemData(object):
     def read_directory(cls, directory):
         commodities = []
         network = {}
-        positions = []
         capacities = {}
         fixed_cost = {}
         var_cost = {}
@@ -359,7 +383,7 @@ class ProblemData(object):
 
             for row in reader:
                 origin,dest = nodes[row[1]], nodes[row[2]]
-                commodities.append({'a': (origin, float(row[4])), 'b': (dest, float(row[5])), 'q': float(row[3])})
+                commodities.append(Commodity(NodeTime(origin, float(row[4])), NodeTime(dest, float(row[5])), float(row[3])))
                 commodity_map[row[0]] = len(commodity_map)
                 commodity_var_cost_network.append({})
 

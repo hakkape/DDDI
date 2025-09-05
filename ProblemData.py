@@ -4,6 +4,7 @@ import math
 import csv
 from typing import NamedTuple
 from itertools import pairwise
+import bisect
 
 class NodeTime(NamedTuple):
     node: int
@@ -47,6 +48,96 @@ class ProblemData(object):
         if self.var_cost == []:
             self.var_cost = [{} for _ in range(len(self.commodities))]
 
+
+    ## significant time-points from "New Dynamic Discretization Discovery Strategies Continuous-Time Service Network Design"
+    ## TODO: can simplify code by removing take_percentage
+    def significant_time_points(self, take_percentage=1.0):
+        # initialize with commodity origin/destination time points
+        time_points: set[NodeTime] = set((k.a for k in self.commodities))
+        time_points.update(k.b for k in self.commodities)
+
+        all_tmp: list[tuple[int, NodeTime]] = []
+
+        # build network graph and get shortest paths
+        # we also do this later in the solve, so ideally we should only do it once
+        G = nx.DiGraph()
+
+        for a, destinations in self.network.items():
+            G.add_edges_from((a, b, {'weight': transit_time}) for b, transit_time in destinations.items())
+
+        shortest_paths = dict(nx.shortest_path_length(G, weight='weight'))
+
+        # earliest arrivals for each node
+        for n in G.nodes():
+            min_time = min((k.a.time + shortest_paths[k.a.node][n] for k in self.commodities))
+            time_points.add(NodeTime(n, min_time))
+
+        # Build per-node sorted time index for fast range checks
+        time_index = {n: sorted(tp.time for tp in time_points if tp.node == n) for n in G.nodes()}
+        K = range(len(self.commodities))
+
+        for i in sorted(G.nodes()):
+            # collect candidate intervals W for node i
+            W: list[tuple[float, float, float]] = []
+
+            # precompute arrival upper bounds at node i for each commodity k1
+            arrive_i = [k.a.time + shortest_paths[k.a.node][i] for k in self.commodities]
+            times_i = time_index.get(i, [])
+            sp_i = shortest_paths[i]
+
+            for j in G.successors(i):
+                sp_i_j = sp_i[j]
+                sp_j = shortest_paths[j]
+
+                for k1 in K:
+                    right = arrive_i[k1]
+
+                    for k2 in K:
+                        if k1 != k2:
+                            dest = self.commodities[k2].b
+                            left = dest.time - sp_j[dest.node] - sp_i_j
+
+                            if left < right:
+                                # fast check: any existing time point in (left, right] for node i?
+                                idx = bisect.bisect_right(times_i, left)
+                                if not (idx < len(times_i) and times_i[idx] <= right):
+                                    W.append((left, right, self.fixed_cost.get((i, j), 0)))
+
+            # Greedy minimum hitting set for intervals
+            if W:
+                W.sort()
+                tp = W[0][1]
+                count = W[0][2]  # cost of first interval
+                tmp = []
+
+                for w in W[1:]:
+                    count += w[2]  # cost of current interval
+                    # skip if tp is valid for this interval
+                    if w[0] < tp <= w[1]:
+                        continue
+
+                    count -= w[2]
+                    tmp.append((count, tp))
+                    tp = w[1]
+                    count = w[2]
+
+                tmp.append((count, tp))
+                all_tmp.extend([(c, NodeTime(i, t)) for c,t in tmp]) 
+
+                # Select the time points with the largest impact
+                # tmp.sort(reverse=True)
+                # time_points.update((NodeTime(i, tp) for _,tp in tmp[:math.floor(len(tmp)*take_percentage) + 1]))
+
+            # print progress
+            print(f"Processed node {i}/{len(G.nodes())}, found {len(time_points)} time points", end='\r')
+        print()
+
+        all_tmp.sort(reverse=True)
+        time_points.update((tp for _,tp in all_tmp[:math.floor(len(all_tmp)*take_percentage) + 1]))
+        print(f"Found {len(time_points)} time points")
+
+        return time_points
+    
 
     ## Scales the time horizon (network and commodities) for this problem
     def scale(self, scale):

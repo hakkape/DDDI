@@ -2,11 +2,20 @@ import csv
 from os import listdir
 from os.path import isdir, join, exists
 from ProblemData import ProblemData
-from IntervalSolver import IntervalSolver
+from IntervalSolver import IntervalSolver, algorithm_option
 from gurobipy import Env
 from instance_classification import InstanceClassification
 from os import makedirs
 from merge import merge_csv_files
+import signal
+import sys
+
+# Handle Ctrl-C to terminate cleanly
+def _handle_sigint(signum, frame):
+    print("\nCtrl-C received. Terminating...")
+    sys.exit(130)
+
+signal.signal(signal.SIGINT, _handle_sigint)
 
 def output_csv(path, file, instance, output, environment, output_last_iteration_only = True):
     csv_filename = output + file + ".csv"
@@ -46,11 +55,10 @@ def run_all(selected_instances, output_dir: str):
     if not exists(output):
         makedirs(output)
 
-    env = Env("")
-
-    for instance in instances:
-        if not exists(output + instance + ".csv"):
-            output_csv(path, instance, 1, output, env)
+    with Env("") as env:
+        for instance in instances:
+            if not exists(output + instance + ".csv"):
+                output_csv(path, instance, 1, output, env)
 
     # merge output files for easier analysis
     merge_csv_files(output + output_dir + '.csv', *[output + instance + ".csv" for instance in instances])
@@ -62,5 +70,3 @@ if __name__ == "__main__":
     run_all(InstanceClassification.LCHF, "LCHF")
     run_all(InstanceClassification.HCLF, "HCLF")
     run_all(InstanceClassification.HCHF, "HCHF")
-
-

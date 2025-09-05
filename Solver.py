@@ -36,12 +36,7 @@ class Solver(object):
 
     def optimize(self, callback=None):
         if callback:
-            def opt(model, where):
-                if where == GRB.callback.MIP:
-                    if not callback(model.cbGet(GRB.callback.MIP_OBJBST), model.cbGet(GRB.callback.MIP_OBJBND)):
-                        self.model.terminate()
-
-            self.model.optimize(opt)
+            self.model.optimize(callback)
         else:
             self.model.optimize()
 

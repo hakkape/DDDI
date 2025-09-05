@@ -6,20 +6,11 @@ This repository contains some of the code and instances associated with the [DDD
 
 ## Benchmark Results
 
-The following results were produced on a desktop computer with an AMD Ryzen Threadripper PRO 5945WX 12-core CPU and 64 GB of RAM. Termination with 1% gap or after 1 hour.  
+The following results were produced on a desktop computer with an AMD Ryzen Threadripper PRO 5945WX 12-core CPU and 64 GB of RAM. Termination with 1% gap or after 1 hour. Solver is Gurobi v12.0.3.
 
-The "Solve (s)" only includes time spent in Gurobi, whereas "Time (s)" includes everthing.  As you can see the python code has relatively low overhead, but could be improved.
+The "Solve (s)" only includes time spent in Gurobi, whereas "Time (s)" includes everything.  As you can see the python code has relatively low overhead, but could be improved.
 
-### Gurobi 11
-
-| Class  | Gap (%) | Time (s) | Solve (s) | # its | Solved (%) |
-|-------:|--------:|---------:|----------:|------:|-----------:|
-| HC/HF  | 0.96%   | 707.23   | 699.24    | 17.3  | 89.3%      |
-| HC/LF  | 0.80%   | 86.36    | 77.73     | 10.8  | 100.0%     |
-| LC/HF  | 0.53%   | 0.04     | 0.01      | 0.5   | 100.0%     |
-| LC/LF  | 0.71%   | 0.45     | 0.15      | 2.9   | 100.0%     |
-
-### Gurobi 12
+### Standard Instances
 
 | Class  | Gap (%) | Time (s) | Solve (s) | # its | Solved (%) |
 |-------:|--------:|---------:|----------:|------:|-----------:|
@@ -29,7 +20,20 @@ The "Solve (s)" only includes time spent in Gurobi, whereas "Time (s)" includes 
 | LC/LF  | 0.69%   | 0.45     | 0.15      | 2.9   | 100.0%     |
 
 
-### SND-RR (Gurobi 12)
+### Significant Time Points
+
+Uses initial time points as per ["New Dynamic Discretization Discovery Strategies
+ for Continuous-Time Service Network Design"](https://optimization-online.org/wp-content/uploads/2025/01/enhanced_DDD_20250116.pdf).  Results do not include time taken to find initial time points (only takes a few seconds typically). Also, uses "reduced" algorithm instead of "adaptive" (i.e., does not adaptively change gap termination for the IP).
+
+| Class  | Gap (%) | Time (s) | Solve (s) | # its | Solved (%) |
+|-------:|--------:|---------:|----------:|------:|-----------:|
+| HC/HF  | 0.79%   | 392.65   | 391.01    | 0.5   | 96.0%      |
+| HC/LF  | 0.41%   | 35.99    | 34.60     | 0.1   | 100.0%     |
+| LC/HF  | 0.12%   | 0.07     | 0.05      | 0.0   | 100.0%     |
+| LC/LF  | 0.15%   | 0.43     | 0.32      | 0.0   | 100.0%     |
+
+
+### SND-RR
 
 | Class           | Gap (%) | Time (s) | Solve (s) | # its | Solved (%) |
 |----------------:|--------:|---------:|----------:|------:|-----------:|

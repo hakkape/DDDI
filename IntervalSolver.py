@@ -56,8 +56,8 @@ SPLIT_PRECISION = 0.001
 HOLDING_COSTS = False
 MAX_WALK_PATHS = 100
 PRECISION = 2 # decimal places
-
-USE_HEURISTIC_START = True
+INCUMBENT_CHECK_INTERVAL = float("inf") #50
+USE_HEURISTIC_START = False
 
 ## useful check for exploring solution graph
 def is_node(n: SolutionGraphNode):
@@ -624,7 +624,7 @@ class IntervalSolver(object):
                 self.lower_bound = float(max(relaxed.objBound, self.lower_bound) if self.lower_bound is not None else relaxed.objBound)
                 self.status = True if relaxed.status in [GRB.status.TIME_LIMIT, GRB.status.INTERRUPTED] and self.incumbent and (self.incumbent - self.lower_bound) < self.incumbent * self.GAP else (relaxed.status == GRB.status.OPTIMAL)
             else:
-                self.solve_lower_bound()
+                self.solve_lower_bound(s)
 
             #self.solve_lower_bound()  # Solve lower bound problem
             solve_time += time.time() - t0
@@ -884,34 +884,57 @@ class IntervalSolver(object):
             file.write("]")
 
     # solve the model
-    def solve_lower_bound(self):
+    def solve_lower_bound(self, solution_check: CheckSolution):
         global check_count
         global last_print
         check_count = time.time()
         last_print = time.time()
+        incumbent_check = [time.time()]
 
-        def callback(objbst, objbnd: float):
+        def callback(model, where):
             global check_count
             global last_print
             global solve_time
 
-            self.lower_bound = max(objbnd, self.lower_bound) if self.lower_bound is not None else objbnd
+            if where == GRB.callback.MIP:
+                objbst = model.cbGet(GRB.callback.MIP_OBJBST)
+                objbnd = model.cbGet(GRB.callback.MIP_OBJBND)
 
-            if self.incumbent is not None and (self.incumbent - self.lower_bound) < self.incumbent * self.GAP:
-                return False # terminate
+                self.lower_bound = max(objbnd, self.lower_bound) if self.lower_bound is not None else objbnd
 
-            if time.time() > last_print + 1:
-                last_print = time.time()
-                if self.incumbent is not None:
-                    sys.stdout.write('{0:7.2%}, {1:7.2%} {2:7.1f}s\r'.format((objbst-objbnd)/objbst, (self.incumbent - self.lower_bound) / self.incumbent, solve_time + time.time() - check_count))
-                else:
-                    sys.stdout.write('{0:7.2%} {1:7.1f}s\r'.format((objbst-objbnd)/objbst, solve_time + time.time() - check_count))
-                sys.stdout.flush()
-            return True
+                if self.incumbent is not None and (self.incumbent - self.lower_bound) < self.incumbent * self.GAP:
+                    model.terminate()
+                    return # terminate
+
+                if time.time() > last_print + 1:
+                    last_print = time.time()
+                    if self.incumbent is not None:
+                        sys.stdout.write('{0:7.2%}, {1:7.2%} {2:7.1f}s\r'.format((objbst-objbnd)/objbst, (self.incumbent - self.lower_bound) / self.incumbent, solve_time + time.time() - check_count))
+                    else:
+                        sys.stdout.write('{0:7.2%} {1:7.1f}s\r'.format((objbst-objbnd)/objbst, solve_time + time.time() - check_count))
+                    sys.stdout.flush()
+
+            elif where == GRB.callback.MIPSOL:
+                    if time.time() > incumbent_check[0] + INCUMBENT_CHECK_INTERVAL and (self.incumbent is None or model.cbGet(GRB.callback.MIPSOL_OBJBST) < self.incumbent):
+                        incumbent_check[0] = time.time()
+                        # try to get solution
+                        solution_paths, consolidations = self.get_inprogress(True)
+                        cons = [SolutionGraphConsolidation(c, frozenset(k)) for c,K in consolidations.items() for k in K if len(k) > 1]
+                        solution, _ = self.get_network_solution(solution_paths, cons)
+
+                        if not list(filter(lambda tw: tw[0] > tw[1], [solution.node_data(SolutionGraphCommodity(k,c.b[0]))['tw'] for k,c in enumerate(self.commodities)])):
+                            if solution_check.validate(solution_paths, consolidations):
+                                solution_cost = solution_check.get_solution_cost()
+
+                                if self.incumbent is None or solution_cost < self.incumbent:
+                                    self.incumbent = solution_cost
+                                    self.solution_paths = solution_paths
+                                    self.consolidations = consolidations
+
 
         self.model.update()
         #self.model.write('test.lp')
-
+        
         if self.suppress_output:
             self.model.optimize()
         else:
@@ -1545,11 +1568,14 @@ class IntervalSolver(object):
         return result
 
 
-    def get_inprogress(self):
+    def get_inprogress(self, cb=False):
         x = [(k,(a1,a2),d['x']) for k,G in enumerate(self.timed_network) for a1,a2,d in G.edges_data() if 'x' in d]
         z = [(a1,a2,z['z'],z['K']) for a1,a2,z in self.cons_network.edges_data() if z['z'] is not None]
 
-        vars = self.model.vals(list(map(itemgetter(2), x + z)))
+        if cb:
+            vars = self.model.model.cbGetSolution(list(map(itemgetter(2), x + z)))
+        else:
+            vars = self.model.vals(list(map(itemgetter(2), x + z)))
 
         # create a path-graph for each commodity - this will simply be a path if freight does not allow splitting
         path_graphs = [nx.DiGraph() for k in self.timed_network]
